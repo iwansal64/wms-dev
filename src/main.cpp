@@ -1,17 +1,28 @@
+//? ------> Libraries
 #include <Arduino.h>
 #include <WebSocketManager.h>
 
+//? ------> Enviroment Variables
 #include <env.h> // Create a new header file to make this works in lib/env/env.h
 
+//? ------> Pins
+#define CONFIG_SWITCH_PIN 10
+
+//? ------> Other 
 #define INTERVAL_PER_DATA 2000
 
-uint64_t last_time_update_data = 0;
 
+//? ------> Variables
+uint64_t last_time_update_data = 0;
 WebSocketManager ws_manager;
 
+
+//? ------> Function Definitions
 void on_websocket_data(WEBSOCKET_DATA);
 void check_water_leakage();
 
+
+//? ------> Main Program
 void setup() {  
   Serial.begin(9600);
 
