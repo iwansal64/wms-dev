@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Arduino.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
@@ -12,6 +14,7 @@ private:
 char *address;
 uint16_t port;
 WebSocketsClient web_socket;
+String payload;
 
 public:
 
@@ -34,6 +37,7 @@ void init(const char *ssid, const char *pass, char *address, uint16_t port);
 /**
  * @brief Used to listen to changes or updates that web socket server sends
  * 
+ * @param callback this function will be called whenever there's data from web socket server
  * 
  * @code
  * void listener(WEBSOCKET_DATA) {
@@ -48,21 +52,36 @@ void init(const char *ssid, const char *pass, char *address, uint16_t port);
  */
 void listen(void (*callback)(WStype_t type, uint8_t * payload, size_t length));
 
-/*
 
-
-Example:
-*/
 /**
- * @brief Used to send data through web socket connection 
+ * @brief Used to prepare data through web socket connection 
+ * 
+ * @param data all sorts of things that can be convereted into a string
+ * 
  * 
  * @code
- * ws_manager.print("data:sensor-1=10");
- * ws_manager.print("data:sensor-2=50");
+ * uint8_t sensor_1 = 10;
+ * ws_manager.put("sensor-1=");
+ * ws_manager.put(sensor_1_value);
+ * ws_manager.launch();
  * @endcode
  * 
  */
-bool print(const char *data);
+template <typename T>
+bool put(const T& data);
+
+
+/**
+ * @brief Used to launch the message to the sky!!.. Oh, I mean web socket server!
+ * 
+ * @code
+ * uint8_t sensor_1 = 10;
+ * ws_manager.put("sensor-1=");
+ * ws_manager.put(sensor_1_value);
+ * ws_manager.launch();
+ * @endcode
+ */
+bool launch();
 
 
 /**
