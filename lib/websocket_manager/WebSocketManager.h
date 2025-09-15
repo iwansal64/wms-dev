@@ -65,16 +65,31 @@ Example:
 bool print(const char *data);
 
 
-/*
-Used to automatically reconnect to the web socket server when disconnected.
-Can be called in a loop()
+/**
+ * @brief Used to automatically reconnect to the web socket server when disconnected
+ * @note can be called in a loop()
+ * 
+ * @code
+ * void loop() {
+ *   auto_reconnect(); // This will block program when disconnected to the web socket server
+ * }
+ * @endcode
+ */
+void wait_to_connect();
 
-Example:
-void loop() {
-  auto_reconnect(); // This will block program when disconnected to the web socket server
-}
-*/
-void auto_reconnect();
+/**
+ * @brief Used to make web socket client works.
+ * @note Should be called in a loop()
+ * 
+ * 
+ * @code
+ * void loop() {
+ *   loop(); // This will block program when disconnected to the web socket server
+ * }
+ * @endcode
+ * 
+ */
+void loop();
 
 static void handle_data(WStype_t type, uint8_t * payload, size_t length);
 };

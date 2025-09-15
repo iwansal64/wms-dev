@@ -1,9 +1,7 @@
 #include <Arduino.h>
 #include <WebSocketManager.h>
 
-#define SSID "IWANS-LAPTOP 4425"
-#define PASS "3142521359"
-
+#include <env.h>
 
 WebSocketManager ws_manager;
 
@@ -30,9 +28,16 @@ void on_websocket_data(WEBSOCKET_DATA) {
 }
 
 void setup() {  
-  ws_manager.init(SSID, PASS, "192.168.137.1", (uint16_t) 8040);
+  Serial.begin(9600);
+  Serial.println("Connecting..");
+  ws_manager.init(ENV_WIFI_SSID, ENV_WIFI_PASS, ENV_WS_ADDR, (uint16_t) 8040);
+  Serial.println("Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Default Gateway: ");
+  Serial.println(WiFi.gatewayIP());
 }
 
 void loop() {
-  ws_manager.auto_reconnect();
+  ws_manager.loop();
 }

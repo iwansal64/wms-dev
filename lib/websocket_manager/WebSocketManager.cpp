@@ -1,4 +1,5 @@
 #include <WebSocketManager.h>
+#include <env.h>
 
 void WebSocketManager::init(char *address, uint16_t port)
 {
@@ -7,7 +8,8 @@ void WebSocketManager::init(char *address, uint16_t port)
   this->address = address;
   this->port = port;
   
-  this->web_socket.begin(address, port, "/");
+  this->web_socket.setExtraHeaders(ENV_COOKIE);
+  this->web_socket.begin(address, port);
   this->web_socket.onEvent(WebSocketManager::handle_data);
 }
 
@@ -20,6 +22,7 @@ void WebSocketManager::init(const char *ssid, const char *pass, char *address, u
   this->address = address;
   this->port = port;
   
+  this->web_socket.setExtraHeaders(ENV_COOKIE);
   this->web_socket.begin(address, port);
   this->web_socket.onEvent(WebSocketManager::handle_data);
 }
@@ -66,16 +69,19 @@ bool WebSocketManager::print(const char *data)
   return this->web_socket.sendTXT(data);
 }
 
-void WebSocketManager::auto_reconnect()
+void WebSocketManager::wait_to_connect()
 {
   if(!this->web_socket.isConnected())
   {
     Serial.print("Connecting to web socket");
-    this->web_socket.begin(this->address, this->port);
     while (!this->web_socket.isConnected())
     {
       Serial.print(" .");
       delay(500);
     }
   }
+}
+
+void WebSocketManager::loop() {
+  this->web_socket.loop();
 }
