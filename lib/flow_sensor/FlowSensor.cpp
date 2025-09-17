@@ -15,9 +15,7 @@ FlowSensor::FlowSensor(uint8_t pin, float calibration_factor) {
 
 //? Flow Rate and Total litres Calculation
 void IRAM_ATTR FlowSensor::handlePulse() {
-  portENTER_CRITICAL_ISR(&mux); //? Safely use volatile variable in ISR
   this->pulse_count++;
-  portEXIT_CRITICAL_ISR(&mux);
 }
 
 void FlowSensor::isrRouter(void* arg) {
@@ -30,16 +28,16 @@ void FlowSensor::update() {
   uint64_t elapsed = current_time - this->last_time;
 
   if (elapsed >= 1000) {  // updates every seconds
-    portENTER_CRITICAL(&mux); //? Safely use volatile variable
+    detachInterrupt(digitalPinToInterrupt(this->pin));
     uint32_t count = this->pulse_count;
     this->pulse_count = 0;
-    portEXIT_CRITICAL(&mux);
 
     float frequency = (1000.0 / elapsed) * count;
     this->flow_rate = frequency / this->calibration_factor;
     this->total_litres += (this->flow_rate / 60.0f) * (elapsed / 1000.0f);
 
     this->last_time = current_time;
+    attachInterruptArg(digitalPinToInterrupt(this->pin), this->isrRouter, this, FALLING);
   }
 }
 

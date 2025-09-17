@@ -44,7 +44,7 @@ public:
   
   /**
    * @brief Monitor for water leakage
-   * @note Required minimal 2 sensors in storage and 2 sensors active
+   * @attention Required minimal 2 sensors in storage and 2 sensors active
    * @note Use add_sensor function to add sensors
    * 
    * example usage:
@@ -58,5 +58,39 @@ public:
    * 
    */
   int8_t monitor();
+
+  /**
+   * @brief Used to get value
+   * @attention Required minimal 1 sensor in storage and 1 sensor active
+   * @note Use add_sensor function to add sensors
+   * 
+   * example usage:
+   * @code
+   * 
+   * void loop() {
+   *  float flow_value = water_leakage_guard.get_flow_value(0) // Get flow value for the first flow sensor value
+   *  Serial.printf("Water flow: %f", flow_value);
+   * }
+   * 
+   * @endcode
+   * 
+   */
+  float get_flow_value(uint8_t sensor_index);
+
+  /**
+   * @brief Used to update the data
+   * @note Required to update the data of all sensors
+   * 
+   * example usage:
+   * @code
+   * 
+   * void loop() {
+   *  water_leakage_guard.run()
+   * }
+   * 
+   * @endcode
+   * 
+   */
+  void run();
 };
 

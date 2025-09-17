@@ -118,7 +118,6 @@ bool ConfigurationManager::start_config_mode() {
   wifi_pass_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
-      Serial.printf("WIFI PASSWORD 1st Checking: %s\n", value);
       ConfigurationManager::set_wifi_pass(value);
       wifi_log_characteric->setValue("WiFi password saved");
     }
@@ -185,8 +184,6 @@ void ConfigurationManager::set_wifi_ssid(String &new_ssid) {
 }
 
 void ConfigurationManager::set_wifi_pass(String &new_pass) {
-  Serial.printf("WIFI PASSWORD 2nd CHECKING: %s\n", new_pass);
-
   preferences.begin("wms-dev", false);
 
   #ifdef SHOW_INFO

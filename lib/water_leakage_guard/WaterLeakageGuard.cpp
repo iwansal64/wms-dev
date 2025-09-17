@@ -41,3 +41,17 @@ bool WaterLeakageGuard::is_leaked(FlowSensor sensor_1, FlowSensor sensor_2) {
 
   return false;
 }
+
+float WaterLeakageGuard::get_flow_value(uint8_t sensor_index) {
+  if(sensor_index > this->flow_sensors.size()) return -1;
+  
+  return this->flow_sensors[sensor_index].get_flow_rate();
+}
+
+void WaterLeakageGuard::run() {
+  if(this->flow_sensors.size() == 0) return;
+  
+  for(FlowSensor &flow_sensor : flow_sensors) {
+    flow_sensor.update(); // Update all flow sensors
+  }
+}
