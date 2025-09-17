@@ -11,6 +11,7 @@
 
 //? ------> Other 
 #define INTERVAL_PER_DATA 2000
+
 #define NORMAL_MODE 0
 #define CONFIGURATION_MODE 1
 
@@ -30,43 +31,49 @@ void check_water_leakage();
 //? ------> Main Program
 void setup() {  
   // Setup Serial
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // Setup Pins
   pinMode(CONFIG_SWITCH_PIN, INPUT_PULLDOWN);
 
   // Get the WiFi SSID and PASS from persistance storage
-  ConfigurationManager::init_storage();
-  String ssid = ConfigurationManager::get_wifi_ssid();
-  String pass = ConfigurationManager::get_wifi_pass();
+  String ssid = "";
+  String pass = "";
+  ConfigurationManager::get_wifi_creds(ssid, pass);
 
   // If the WiFi credentials is not empty
   if(!ssid.isEmpty() && !pass.isEmpty())
   {
-    wifi_configurated = true;
-
-    #ifdef SHOW_INFO
-    Serial.print("[WIFI] Connecting to ");
-    Serial.println(ssid);
-    #endif
+    if(mode == NORMAL_MODE) {
+      wifi_configurated = true;
   
-    // Begin connection to WiFi with SSID and PASS from configuration
-    WiFi.begin(ssid, pass);
-    while(WiFi.status() != WL_CONNECTED) delay(500);
+      #ifdef SHOW_INFO
+      Serial.print("[WIFI] Connecting to ");
+      Serial.println(ssid);
+      #endif
+    
+      // Begin connection to WiFi with SSID and PASS from configuration
+      WiFi.begin(ssid, pass);
+      while(WiFi.status() != WL_CONNECTED) delay(500);
+    
+      #ifdef SHOW_INFO
+      Serial.println("[WIFI] Connected!");
+      #endif
+    
+      #ifdef SHOW_DEBUG
+      Serial.print("[WiFi] IP Address: ");
+      Serial.println(WiFi.localIP());
+      Serial.print("[WiFi] Default Gateway: ");
+      Serial.println(WiFi.gatewayIP());
+      #endif
   
-    #ifdef SHOW_INFO
-    Serial.println("[WIFI] Connected!");
-    #endif
-  
-    #ifdef SHOW_DEBUG
-    Serial.print("[WiFi] IP Address: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("[WiFi] Default Gateway: ");
-    Serial.println(WiFi.gatewayIP());
-    #endif
-
-    // Begin connection to WebSocket
-    ws_manager.init(ENV_WS_ADDR, (uint16_t) 8040);
+      // Begin connection to WebSocket
+      ws_manager.init(ENV_WS_ADDR, (uint16_t) 8040);
+    }
+    else {
+      wifi_configurated = false;
+      Serial.println("[WIFI] Configuration Mode!");
+    }
   }
   else {
     wifi_configurated = false;

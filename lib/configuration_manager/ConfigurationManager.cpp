@@ -18,14 +18,18 @@ Preferences preferences;
 
 
 // BLE Characteristics
-NimBLECharacteristic *wifi_ssid_characteric;
-NimBLECharacteristic *wifi_pass_characteric;
+static NimBLECharacteristic *wifi_ssid_characteric;
+static NimBLECharacteristic *wifi_pass_characteric;
+static NimBLECharacteristic *wifi_log_characteric;
 
 // UUID for characteristics and services of BLE
-static BLEUUID wifi_pass_uuid(ENV_WIFI_PASS_BLE_UUID);
 static BLEUUID wifi_ssid_uuid(ENV_WIFI_SSID_BLE_UUID);
+static BLEUUID wifi_pass_uuid(ENV_WIFI_PASS_BLE_UUID);
+static BLEUUID wifi_log_uuid(ENV_WIFI_LOG_BLE_UUID);
 static BLEUUID wifi_service_uuid(ENV_WIFI_SERVICE_BLE_UUID);
 
+// Static server
+static NimBLEServer *ble_server;
 
 // BLE Callbacks
 template <typename F>
@@ -38,62 +42,96 @@ public:
   }
 };
 
+class ServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer *ble_server, NimBLEConnInfo &ble_conn_info) override {
+    Serial.printf("[Bluetooth] Connected client with address: %s\n", ble_conn_info.getAddress().toString().c_str());
+  }
+
+  void onDisconnect(NimBLEServer *ble_server, NimBLEConnInfo &ble_conn_info, int reason) override {
+    Serial.printf("[Bluetooth] Disconnected client with address: %s\n", ble_conn_info.getAddress().toString().c_str());
+    NimBLEDevice::startAdvertising();
+  }
+
+  uint32_t onPassKeyDisplay() override {
+    Serial.printf("[Bluetooth] Server Passkey Display.\n");
+    return BLE_PASSKEY;
+  }
+
+  void onConfirmPassKey(NimBLEConnInfo& connInfo, uint32_t pass_key) override {
+    Serial.printf("[Bluetooth] The passkey for number: %" PRIu32 "\n", pass_key);
+    
+    /** Inject false if passkeys don't match. */
+    NimBLEDevice::injectConfirmPasskey(connInfo, pass_key == BLE_PASSKEY);
+  }
+
+  void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+    /** Check that encryption was successful, if not we disconnect the client */
+    if (!connInfo.isEncrypted()) {
+        NimBLEDevice::getServer()->disconnect(connInfo.getConnHandle());
+        Serial.print("[Bluetooth] Encrypt connection failed - disconnecting client\n");
+        return;
+    }
+
+    Serial.printf("[Bluetooth] Secured connection to: %s\n", connInfo.getAddress().toString().c_str());
+  }
+} serverCallbacks;
+
+
+
 
 // Configuration Manager Static Variables
-bool ConfigurationManager::is_storage_initialized = false;
+bool ConfigurationManager::is_storage_open = false;
 bool ConfigurationManager::is_ble_active = false;
 
 
 // Configuration Manager Static Functions
-void ConfigurationManager::init_storage() {
-  if(ConfigurationManager::is_storage_initialized) return;
-  preferences.begin("wms-dev", false);
-  ConfigurationManager::is_storage_initialized = true;
-}
-
 bool ConfigurationManager::start_config_mode() {
   if(ConfigurationManager::is_ble_active) return false;
-  // Setting up device name
-  std::string device_name = "ESP32-";
-  device_name += ENV_DEVICE_ID;
-  
   // Initialize BLE in the ESP32
   #ifdef SHOW_INFO
   Serial.println("[Configuration] Starting BLE Device");
   #endif
 
-  NimBLEDevice::init(device_name);
+  NimBLEDevice::init(ENV_DEVICE_NAME);
 
   // Create BLE Server
-  BLEServer *ble_server = NimBLEDevice::createServer();
+  ble_server = NimBLEDevice::createServer();
+  ble_server->setCallbacks(&serverCallbacks);
 
   // Create BLE Service
-  BLEService *ble_wifi_service = ble_server->createService(wifi_service_uuid);
+  NimBLEService *ble_wifi_service = ble_server->createService(wifi_service_uuid);
 
   // Create BLE Characteristics for containing SSID and password
-  wifi_ssid_characteric = ble_wifi_service->createCharacteristic(wifi_ssid_uuid, DEFAULT_BLE_PROPERTIES);
-  wifi_pass_characteric = ble_wifi_service->createCharacteristic(wifi_pass_uuid, DEFAULT_BLE_PROPERTIES);
+  wifi_ssid_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_SSID_BLE_UUID, DEFAULT_BLE_PROPERTIES);
+  wifi_pass_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_PASS_BLE_UUID, DEFAULT_BLE_PROPERTIES);
+  wifi_log_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_LOG_BLE_UUID, DEFAULT_BLE_PROPERTIES);
 
   // Setting BLE Listener
   wifi_ssid_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
-      String value = characteristics->getValue();
+      String value = String(characteristics->getValue());
       ConfigurationManager::set_wifi_ssid(value);
+      wifi_log_characteric->setValue("WiFi SSID saved");
     }
   ));
   
   wifi_pass_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
-      String value = characteristics->getValue();
+      String value = String(characteristics->getValue());
+      Serial.printf("WIFI PASSWORD 1st Checking: %s\n", value);
       ConfigurationManager::set_wifi_pass(value);
+      wifi_log_characteric->setValue("WiFi password saved");
     }
   ));
 
   // Start the BLE server
   ble_wifi_service->start();
   NimBLEAdvertising* ble_advertising = NimBLEDevice::getAdvertising();
+  ble_advertising->setName(ENV_DEVICE_NAME);
   ble_advertising->addServiceUUID(ble_wifi_service->getUUID());
-  NimBLEDevice::startAdvertising();
+  ble_advertising->enableScanResponse(true);
+  ble_advertising->start();
+
 
   #ifdef SHOW_INFO
   Serial.println("[Configuration] BLE Advertising Started!");
@@ -120,16 +158,19 @@ bool ConfigurationManager::stop_config_mode() {
 }
 
 
-String ConfigurationManager::get_wifi_ssid() {
-  return preferences.getString("wifi-ssid", "");
+void ConfigurationManager::get_wifi_creds(String &ssid_container, String &pass_container) {
+  preferences.begin("wms-dev", true);
+
+  ssid_container = preferences.getString("wifi-ssid", "");
+  pass_container = preferences.getString("wifi-pass", "");
+  
+  preferences.end();
 }
 
-String ConfigurationManager::get_wifi_pass() {
-  return preferences.getString("wifi-pass", "");
-}
 
+void ConfigurationManager::set_wifi_ssid(String &new_ssid) {
+  preferences.begin("wms-dev", false);
 
-void ConfigurationManager::set_wifi_ssid(String new_ssid) {
   #ifdef SHOW_INFO
   Serial.println("[Configuration] Saving new WiFi SSID...");
   #endif
@@ -139,9 +180,15 @@ void ConfigurationManager::set_wifi_ssid(String new_ssid) {
   #ifdef SHOW_INFO
   Serial.println("[Configuration] New WiFi SSID saved!");
   #endif
+
+  preferences.end();
 }
 
-void ConfigurationManager::set_wifi_pass(String new_pass) {
+void ConfigurationManager::set_wifi_pass(String &new_pass) {
+  Serial.printf("WIFI PASSWORD 2nd CHECKING: %s\n", new_pass);
+
+  preferences.begin("wms-dev", false);
+
   #ifdef SHOW_INFO
   Serial.println("[Configuration] Saving new WiFi password...");
   #endif
@@ -151,4 +198,6 @@ void ConfigurationManager::set_wifi_pass(String new_pass) {
   #ifdef SHOW_INFO
   Serial.println("[Configuration] New WiFi password saved!");
   #endif
+  
+  preferences.end();
 }
