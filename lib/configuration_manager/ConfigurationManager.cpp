@@ -83,6 +83,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 bool ConfigurationManager::is_storage_open = false;
 bool ConfigurationManager::is_ble_active = false;
 
+String ConfigurationManager::data_chunked = "";
+
 
 // Configuration Manager Static Functions
 bool ConfigurationManager::start_config_mode() {
@@ -93,6 +95,7 @@ bool ConfigurationManager::start_config_mode() {
   #endif
 
   NimBLEDevice::init(ENV_DEVICE_NAME);
+  NimBLEDevice::setMTU(100);
 
   // Create BLE Server
   ble_server = NimBLEDevice::createServer();
@@ -106,20 +109,48 @@ bool ConfigurationManager::start_config_mode() {
   wifi_pass_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_PASS_BLE_UUID, DEFAULT_BLE_PROPERTIES);
   wifi_log_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_LOG_BLE_UUID, DEFAULT_BLE_PROPERTIES);
 
+  wifi_ssid_characteric->setValue((uint8_t *)"123456789012345678901234567890", 30); // Set the maximum BLE value to 30
+  wifi_pass_characteric->setValue((uint8_t *)"123456789012345678901234567890", 30); // Set the maximum BLE value to 30
+
   // Setting BLE Listener
   wifi_ssid_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
-      ConfigurationManager::set_wifi_ssid(value);
-      wifi_log_characteric->setValue("WiFi SSID saved");
+      Serial.printf("[Bluetooth] SSID Value: <%s>\n", value);
+
+      if(value == "[") {
+        ConfigurationManager::data_chunked = "";
+      }
+      else if(value == "]") {
+        Serial.printf("[Bluetooth] SSID Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
+        ConfigurationManager::set_wifi_ssid(ConfigurationManager::data_chunked);
+        wifi_log_characteric->setValue("WiFi SSID saved");
+        ConfigurationManager::data_chunked = "";
+      }
+      else {
+        ConfigurationManager::data_chunked += value;
+      }
     }
   ));
   
   wifi_pass_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
-      ConfigurationManager::set_wifi_pass(value);
-      wifi_log_characteric->setValue("WiFi password saved");
+      
+      Serial.printf("[Bluetooth] Pass Value: <%s>\n", value);
+
+      if(value == "[") {
+        ConfigurationManager::data_chunked = "";
+      }
+      else if(value == "]") {
+        Serial.printf("[Bluetooth] Pass Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
+        ConfigurationManager::set_wifi_pass(ConfigurationManager::data_chunked);
+        wifi_log_characteric->setValue("WiFi password saved");
+        ConfigurationManager::data_chunked = "";
+      }
+      else {
+        ConfigurationManager::data_chunked += value;
+      }
     }
   ));
 
@@ -149,7 +180,7 @@ bool ConfigurationManager::stop_config_mode() {
   if(!ConfigurationManager::is_ble_active) return false;
 
   // De-initialized BLE Device and return the result
-  bool result = NimBLEDevice::deinit(true);
+  bool result = NimBLEDevice::deinit(false);
   if(result) {
     ConfigurationManager::is_ble_active = false;
   }
@@ -160,41 +191,106 @@ bool ConfigurationManager::stop_config_mode() {
 void ConfigurationManager::get_wifi_creds(String &ssid_container, String &pass_container) {
   preferences.begin("wms-dev", true);
 
-  ssid_container = preferences.getString("wifi-ssid", "");
-  pass_container = preferences.getString("wifi-pass", "");
-  
+  ssid_container = ConfigurationManager::get_string("wifi-ssid");
+  pass_container = ConfigurationManager::get_string("wifi-pass");
+
   preferences.end();
 }
 
 
-void ConfigurationManager::set_wifi_ssid(String &new_ssid) {
-  preferences.begin("wms-dev", false);
 
+void ConfigurationManager::set_wifi_ssid(String &new_ssid) {
   #ifdef SHOW_INFO
   Serial.println("[Configuration] Saving new WiFi SSID...");
   #endif
   
-  preferences.putString("wifi-ssid", new_ssid);
+  ConfigurationManager::set_string("wifi-ssid", new_ssid);
 
   #ifdef SHOW_INFO
   Serial.println("[Configuration] New WiFi SSID saved!");
   #endif
-
-  preferences.end();
 }
 
 void ConfigurationManager::set_wifi_pass(String &new_pass) {
-  preferences.begin("wms-dev", false);
-
   #ifdef SHOW_INFO
   Serial.println("[Configuration] Saving new WiFi password...");
   #endif
 
-  preferences.putString("wifi-pass", new_pass);
+  ConfigurationManager::set_string("wifi-pass", new_pass);
 
   #ifdef SHOW_INFO
   Serial.println("[Configuration] New WiFi password saved!");
   #endif
+}
+
+void ConfigurationManager::set_string(const char* key, String &value) {
+  preferences.begin("wms-dev", false);
+
+  // Check if the value length is less than 16
+  if(value.length() < 10) {
+    preferences.putString(key, value);
+
+    String key_ps = "ps-" + String(key);
+    preferences.putShort(key_ps.c_str(), 0);
+  }
+
+  // If the value length is more than 16
+  else {
+    String current_value = "";
+    uint8_t character_index = 0;
+    uint8_t current_partition = 0;
+
+    // Loop through characters of the value
+    for(char c : value) {
+      character_index++;
+      current_value += c;
+      
+      // If the number of characters 10 or above 
+      if(character_index >= 10) {
+
+        // Save the part
+        String key_partition = String(key) + "-" + String(current_partition);
+        preferences.putString(key_partition.c_str(), current_value);
+        Serial.printf("Partition Part-%d Info: %s\n", current_partition, current_value);
+        
+        current_value = "";
+        character_index = 0;
+        current_partition += 1;
+      }
+    }
+
+    if(current_value != "") {
+      String key_partition = String(key) + "-" + String(current_partition);
+      preferences.putString(key_partition.c_str(), current_value);
+      Serial.printf("Partition Part-%d Info: %s\n", current_partition, current_value);
+      current_partition += 1;
+    }
+
+    String key_ps = "ps-" + String(key);
+    preferences.putShort(key_ps.c_str(), current_partition);
+  }
   
   preferences.end();
+}
+
+String ConfigurationManager::get_string(const char* key) {
+  // Check if there's partition for it
+  String key_ps = "ps-" + String(key);
+  uint16_t partition_size_info = preferences.getShort(key_ps.c_str(), 0);
+  Serial.printf("Partition Size Info: %d\n", partition_size_info);
+
+  // If there's no partition
+  if(partition_size_info == 0) {
+    return preferences.getString(key, "");
+  }
+
+  // If there's partition
+  else {
+    String result = "";
+    for(uint16_t partition_index = 0; partition_index < partition_size_info; partition_index++) {
+      String key_partition = String(key) + "-" + String(partition_index);
+      result += preferences.getString(key_partition.c_str(), "");
+    }
+    return result;
+  }
 }

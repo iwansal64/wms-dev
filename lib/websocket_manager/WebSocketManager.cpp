@@ -1,24 +1,16 @@
 #include <WebSocketManager.h>
 #include <env.h>
 
-void WebSocketManager::init(char *address, uint16_t port)
+bool WebSocketManager::init(const char *address, uint16_t port)
 {
   if(WiFi.status() != WL_CONNECTED)
   {
 
-  #ifdef SHOW_WARN
-  Serial.println("[WebSocket] WiFi is not connected");
-  Serial.println("[WebSocket] Waiting connection to WiFi");
-  #endif
+    #ifdef SHOW_WARN
+    Serial.println("[WebSocket] WiFi is not connected");
+    #endif
 
-    while(WiFi.status() != WL_CONNECTED)
-    {
-      #ifdef SHOW_WARN
-      Serial.print(" .");
-      #endif
-    
-      delay(500);
-    }
+    return false;
   };
   
   this->address = address;
@@ -34,9 +26,11 @@ void WebSocketManager::init(char *address, uint16_t port)
   this->web_socket.setExtraHeaders(ENV_COOKIE);
   this->web_socket.begin(address, port);
   this->web_socket.onEvent(WebSocketManager::handle_data);
+
+  return true;
 }
 
-void WebSocketManager::init(const char *ssid, const char *pass, char *address, uint16_t port)
+bool WebSocketManager::init(const char *ssid, const char *pass, const char *address, uint16_t port)
 {
   WiFi.begin(ssid, pass);
 
@@ -47,14 +41,7 @@ void WebSocketManager::init(const char *ssid, const char *pass, char *address, u
     Serial.println("[WebSocket] Waiting connection to WiFi");
     #endif
 
-    while(WiFi.status() != WL_CONNECTED)
-    {
-      #ifdef SHOW_WARN
-      Serial.print(" .");
-      #endif
-    
-      delay(500);
-    }
+    return false;
   };
 
   this->address = address;
@@ -70,6 +57,8 @@ void WebSocketManager::init(const char *ssid, const char *pass, char *address, u
   this->web_socket.setExtraHeaders(ENV_COOKIE);
   this->web_socket.begin(address, port);
   this->web_socket.onEvent(WebSocketManager::handle_data);
+  
+  return true;
 }
 
 void WebSocketManager::listen(void (*callback)(WStype_t type, uint8_t * payload, size_t length))
@@ -102,7 +91,7 @@ void WebSocketManager::handle_data(WStype_t type, uint8_t * payload, size_t leng
 
     case WStype_CONNECTED:
       #ifdef SHOW_INFO
-      Serial.printf("[WebSocket] Connected to: %s\n", payload);
+      Serial.printf("[WebSocket] Connected to Web Socket!\n");
       #endif
       break;
 
@@ -122,6 +111,7 @@ void WebSocketManager::handle_data(WStype_t type, uint8_t * payload, size_t leng
 
 template bool WebSocketManager::put<int>(const int& data);
 template bool WebSocketManager::put<uint8_t>(const uint8_t& data);
+template bool WebSocketManager::put<int8_t>(const int8_t& data);
 template bool WebSocketManager::put<float>(const float& data);
 template bool WebSocketManager::put<char>(const char& data);
 template bool WebSocketManager::put<String>(const String& data);
@@ -129,6 +119,11 @@ template bool WebSocketManager::put<String>(const String& data);
 template <typename T>
 bool WebSocketManager::put(const T& data)
 {
+  this->payload += String(data);
+  return true;
+}
+
+bool WebSocketManager::launch() {
   if (!this->web_socket.isConnected())
   {
     #ifdef SHOW_WARN
@@ -137,11 +132,6 @@ bool WebSocketManager::put(const T& data)
     return false;
   }
 
-  this->payload += String(data);
-  return true;
-}
-
-bool WebSocketManager::launch() {
   bool result = this->web_socket.sendTXT(this->payload);
   
   #ifdef SHOW_WARN

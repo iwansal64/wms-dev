@@ -11,7 +11,7 @@
 class WebSocketManager
 {
 private:
-char *address;
+const char *address;
 uint16_t port;
 WebSocketsClient web_socket;
 String payload;
@@ -31,8 +31,8 @@ public:
  * @endcode
  * 
  */
-void init(char *address, uint16_t port);
-void init(const char *ssid, const char *pass, char *address, uint16_t port);
+bool init(const char *address, uint16_t port);
+bool init(const char *ssid, const char *pass, const char *address, uint16_t port);
 
 /**
  * @brief Used to listen to changes or updates that web socket server sends

@@ -8,6 +8,7 @@ class ConfigurationManager
 public:
   static bool is_storage_open;
   static bool is_ble_active;
+  static String data_chunked;
 
   /**
    * @brief Used to start configuration process including BLE server setup
@@ -45,4 +46,16 @@ public:
    * @attention Use this after calling init_storage() function
    */
   static void set_wifi_pass(String &new_pass);
+
+  /**
+   * @brief Used to set String to persistence storage
+   * @attention Use this after calling init_storage() function
+   */
+  static void set_string(const char *key, String &value);
+
+  /**
+   * @brief Used to get String from persistence storage
+   * @attention Use this after calling init_storage() function
+   */
+  static String get_string(const char *key);
 };

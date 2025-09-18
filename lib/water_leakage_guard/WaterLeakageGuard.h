@@ -1,3 +1,8 @@
+/**
+ * @author Ridwan Setiawan (iwansal64@gmail.com)
+ * @date Wednesday, 17 September 2025
+ * 
+ */
 #pragma once
 
 #include <Arduino.h>
@@ -43,21 +48,45 @@ public:
   void add_sensor(uint8_t sensor_pin);
   
   /**
-   * @brief Monitor for water leakage
-   * @attention Required minimal 2 sensors in storage and 2 sensors active
-   * @note Use add_sensor function to add sensors
+   * @brief Used to update the data
+   * @note Required to update the data of all sensors
    * 
    * example usage:
    * @code
    * 
    * void loop() {
-   *  water_leakage_guard.monitor()
+   *  water_leakage_guard.run()
    * }
    * 
    * @endcode
    * 
    */
-  int8_t monitor();
+  void run();
+  
+  /**
+   * @brief Monitor for water leakage
+   * @attention Required minimal 2 sensors in storage and 2 sensors active
+   * @note Use add_sensor function to add sensors
+   * @return Return a sensor number that has leak for the pipe after it
+   * 
+   * example usage:
+   * @code
+   * 
+   * void loop() {
+   *  uint8_t water_leak = water_leakage_guard.get_water_leak_value();
+   * 
+   *  if(water_leak > 0) {
+   *    Serial.printf("Pipe between sensor number #%d and number #%d has a leak!\n", water_leak, water_leak + 1)
+   *  }
+   *  else {
+   *    Serial.print("There's no leak!\n");
+   *  }
+   * }
+   * 
+   * @endcode
+   * 
+   */
+  int8_t get_water_leak_value();
 
   /**
    * @brief Used to get value
@@ -76,7 +105,7 @@ public:
    * 
    */
   float get_flow_value(uint8_t sensor_index);
-
+  
   /**
    * @brief Used to update the data
    * @note Required to update the data of all sensors
@@ -91,6 +120,6 @@ public:
    * @endcode
    * 
    */
-  void run();
+  float get_average_flow_value();
 };
 

@@ -9,7 +9,7 @@ void WaterLeakageGuard::add_sensor(uint8_t sensor_pin) {
   #endif
 }
 
-int8_t WaterLeakageGuard::monitor() {
+int8_t WaterLeakageGuard::get_water_leak_value() {
   if(this->flow_sensors.size() < 2) {
 
     #ifdef SHOW_WARN
@@ -28,7 +28,7 @@ int8_t WaterLeakageGuard::monitor() {
     }
   }
   
-  return current_sensor_index == this->flow_sensors.size() - 1 ? 0 : current_sensor_index + 1;
+  return (current_sensor_index == this->flow_sensors.size() - 1) ? 0 : current_sensor_index + 1;
 }
 
 bool WaterLeakageGuard::is_leaked(FlowSensor sensor_1, FlowSensor sensor_2) {
@@ -54,4 +54,15 @@ void WaterLeakageGuard::run() {
   for(FlowSensor &flow_sensor : flow_sensors) {
     flow_sensor.update(); // Update all flow sensors
   }
+}
+
+float WaterLeakageGuard::get_average_flow_value() {
+  if(this->flow_sensors.size() == 0) return 0;
+  
+  float average_flow_sensor = 0;
+  for(FlowSensor &flow_sensor : flow_sensors) {
+    average_flow_sensor += flow_sensor.get_flow_rate();
+  }
+
+  return average_flow_sensor / this->flow_sensors.size();
 }
