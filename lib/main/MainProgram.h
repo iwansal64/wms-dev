@@ -1,9 +1,12 @@
 //? ------> [DEPS] Libraries
+#include <Arduino.h>                // Basic built-in Arduino library
+#include <WebSocketManager.h>       // Custom web socket handler library
+#include <ConfigurationManager.h>   // Custom configuration through bluetooth library
+#include <WaterLeakageGuard.h>      // Custom water leakage monitoring library
+#include <HTTPUpdateServer.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
 
-#include <Arduino.h>
-#include <WebSocketManager.h>
-#include <ConfigurationManager.h>
-#include <WaterLeakageGuard.h>
 
 //? ------> [ENV] Enviroment Variables
 
@@ -11,53 +14,76 @@
 
 //? ------> [GPIO] GPIO Pins
 
-#define CONFIG_SWITCH_PIN 26
-#define WATER_FLOW_SENSOR_1_PIN 27
-#define CONFIG_INDICATOR_PIN 32
-#define WIFI_INDICATOR_PIN 33
+#define CONFIG_SWITCH_PIN 22
+#define WATER_FLOW_SENSOR_1_PIN 4
+#define WATER_FLOW_SENSOR_2_PIN 2
+#define CONFIG_INDICATOR_PIN 21
+#define WIFI_INDICATOR_PIN 18
+#define ERROR_INDICATOR_PIN 19
 
 //? ------> [HELPER] Convinient Definitions
 
 #define ON HIGH
 #define OFF LOW
 
-#define INTERVAL_PER_DATA 5000
-#define INTERVAL_FOR_WIFI_INDICATOR 2000
+#define INTERVAL_PER_DATA 2000
+#define INTERVAL_FOR_WIFI_INDICATOR 1000
+#define INTERVAL_OTA_PROGRESS_UPDATE 1000
 
 #define NORMAL_MODE 0
 #define CONFIGURATION_MODE 1
 
 #define CURRENT_MODE digitalRead(CONFIG_SWITCH_PIN)
 
-//? ------> [VARIABLES] Data Storages
+//? ------> [VARIABLES] Data
 
+// Web Socket data communication
 uint64_t last_time_update_data = 0UL;
 WebSocketManager ws_manager;
 WaterLeakageGuard water_leakage_guard;
+
+// WiFi states
 bool wifi_configurated = false;
 bool wifi_connected = false;
-
-uint8_t previous_mode = NORMAL_MODE;
-
-uint8_t previous_water_flow_value = 0;
-
-uint8_t previous_water_leak_value = 0;
 bool wifi_led_state = false;
 uint64_t last_wifi_led_changed = 0UL;
 
+// Mode handler
+uint8_t previous_mode = NORMAL_MODE;
+
+// Water Flow data
+uint8_t previous_water_flow_value = 0;
+uint8_t previous_water_leak_value = 0;
+
+// Arduino OTA
+WebServer sync_server(8080);
+HTTPUpdateServer http_ota_updater;
+uint64_t last_ota_progress_update = 0UL;
+
 //? ------> [FUNCTIONS] Function Definitions
 
-void on_websocket_data(WEBSOCKET_DATA);
-void monitor_water_leakage();
-
-void check_wifi_connection();
-void connect_wifi(String ssid, String pass);
-
+// Starting and ending functions
 void start_normal_mode();
 void start_configuration_mode();
 void stop_configuration_mode();
 
+// Looped Functions
 void loop_normal_mode();
+
+// Water Leakage Handler functions
+void monitor_water_leakage();
+
+// WiFi functions
+void check_wifi_connection();
+void connect_wifi(String ssid, String pass);
+
+// Elegant OTA Listener
+void on_ota_start();
+void on_ota_progress(size_t current, size_t final);
+void on_ota_end(bool success);
+
+// Web Socket Listener 
+void on_websocket_data(WEBSOCKET_DATA);
 
 //? ------> [SETUP] Executed Once Program
 
@@ -95,6 +121,9 @@ void setup() {
     // Start Normal Mode
     start_normal_mode();
   }
+
+  // Setup WiFi
+  WiFi.setHostname(ENV_DEVICE_NAME);
 }
 
 //? ------> [LOOP] Executed Continously Program
@@ -111,7 +140,7 @@ void loop() {
 
   // If it's not it's on normal mode :]
   if(CURRENT_MODE == NORMAL_MODE) {
-    // If previously configuration mode
+    // If previously configuration mode :)
     if(previous_mode == CONFIGURATION_MODE) {
       start_normal_mode();
       stop_configuration_mode();
@@ -121,6 +150,12 @@ void loop() {
     loop_normal_mode();
 
     previous_mode = NORMAL_MODE;
+  }
+
+  // If WiFi is currently connected :]
+  if(wifi_connected) {
+    // Run the OTA updater :|
+    sync_server.handleClient();
   }
 }
 
@@ -136,7 +171,9 @@ void check_wifi_connection() {
   // WiFi is connected
   if(WiFi.status() == WL_CONNECTED) {
     // First time connected after not connected
+    // On Connected to the WiFi
     if(!wifi_connected) {
+      // Change wifi connection state to true
       wifi_connected = true;
       
       #ifdef SHOW_INFO
@@ -153,6 +190,18 @@ void check_wifi_connection() {
       
       // Begin connection to WebSocket
       ws_manager.init(ENV_WS_ADDR, (uint16_t) 8040);
+
+
+      // Begin OTA Setup
+      if(MDNS.begin("esp32")) {
+        Serial.print("[OTA] mDNS started!\n");
+      }
+
+      http_ota_updater.setup(&sync_server);
+      Serial.print("[OTA] Async OTA started!\n");
+
+      sync_server.begin();
+      Serial.print("[OTA] Web servers started!\n");
     }
 
     digitalWrite(WIFI_INDICATOR_PIN, 1);
@@ -175,7 +224,7 @@ void check_wifi_connection() {
  * 
  */
 void connect_wifi(String SSID, String PASS) {
-  WiFi.begin(SSID, PASS);
+  WiFi.begin(SSID.c_str(), PASS.c_str());
 }
 
 /**
@@ -312,8 +361,8 @@ void monitor_water_leakage() {
   
   //? UPDATING WATER LEAK VALUE
   // Get water leak value
-  // int8_t current_water_leak_value = water_leakage_guard.get_water_leak_value();
-  int8_t current_water_leak_value = random(0, 4);
+  int8_t current_water_leak_value = water_leakage_guard.get_water_leak_value();
+  // int8_t current_water_leak_value = random(0, 4);
   Serial.printf("Water Leak: %d\n", current_water_leak_value);
   
 
@@ -333,7 +382,7 @@ void monitor_water_leakage() {
   }
 
   // If the data changed, update to the websocket
-  if(current_water_leak_value != previous_water_leak_value) {
+  if(current_water_leak_value != previous_water_leak_value && current_water_leak_value != -1) {
   
     // Prepare the data for flow value
     ws_manager.put(String("leak="));
@@ -343,5 +392,38 @@ void monitor_water_leakage() {
     bool result = ws_manager.launch();
 
     previous_water_leak_value = current_water_leak_value;
+  }
+}
+
+
+/**
+ * @brief On OTA firmware update start
+ * 
+ */
+void on_ota_start() {
+  Serial.print("[OTA] Begin to upgrade firmware\n");
+}
+
+/**
+ * @brief On OTA firmware update progress
+ * 
+ */
+void on_ota_progress(size_t current, size_t final) {
+  if(millis() - last_ota_progress_update > INTERVAL_OTA_PROGRESS_UPDATE) {
+    Serial.printf("[OTA] Progress : %u bytes | Final : %u bytes\r", current, final);
+    last_ota_progress_update = millis();
+  }
+}
+
+/**
+ * @brief On OTA firmware update finished
+ * 
+ */
+void on_ota_end(bool success) {
+  if(success) {
+    Serial.print("[OTA] Successfully upgrade firmware\n");
+  }
+  else {
+    Serial.print("[OTA] Upgrade firmware failed... IDK WHY :(\n");
   }
 }
