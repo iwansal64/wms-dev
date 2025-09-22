@@ -9,6 +9,7 @@
 #define DEFAULT_BLE_PROPERTIES NIMBLE_PROPERTY::READ |\
                                NIMBLE_PROPERTY::WRITE |\
                                NIMBLE_PROPERTY::NOTIFY
+#define WIFI_LOG_TIMEOUT 5000
 
 // Environment Variables
 #include <env.h>
@@ -78,6 +79,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 // Configuration Manager Static Variables
 bool ConfigurationManager::is_storage_open = false;
 bool ConfigurationManager::is_ble_active = false;
+uint64_t ConfigurationManager::last_wifi_log_changed = 0;
 
 String ConfigurationManager::data_chunked = "";
 
@@ -91,6 +93,7 @@ bool ConfigurationManager::start_config_mode() {
   #endif
 
   NimBLEDevice::init(ENV_DEVICE_NAME);
+  NimBLEDevice::setMTU(512);
 
   // Create BLE Server
   ble_server = NimBLEDevice::createServer();
@@ -109,15 +112,19 @@ bool ConfigurationManager::start_config_mode() {
   wifi_ssid_characteristic->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
+      #ifdef SHOW_DEBUG
       Serial.printf("[Bluetooth] SSID Value: <%s>\n", value);
+      #endif
 
       if(value == "[") {
         ConfigurationManager::data_chunked = "";
       }
       else if(value == "]") {
+        #ifdef SHOW_DEBUG
         Serial.printf("[Bluetooth] SSID Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
+        #endif
         ConfigurationManager::set_wifi_ssid(ConfigurationManager::data_chunked);
-        wifi_log_characteristic->setValue("ssid-saved");
+        ConfigurationManager::set_wifi_log("ssid-saved");
         ConfigurationManager::data_chunked = "";
       }
       else {
@@ -130,15 +137,19 @@ bool ConfigurationManager::start_config_mode() {
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
       
+      #ifdef SHOW_DEBUG
       Serial.printf("[Bluetooth] Pass Value: <%s>\n", value);
+      #endif
 
       if(value == "[") {
         ConfigurationManager::data_chunked = "";
       }
       else if(value == "]") {
+        #ifdef SHOW_DEBUG
         Serial.printf("[Bluetooth] Pass Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
+        #endif
         ConfigurationManager::set_wifi_pass(ConfigurationManager::data_chunked);
-        wifi_log_characteristic->setValue("pass-saved");
+        ConfigurationManager::set_wifi_log("pass-saved");
         ConfigurationManager::data_chunked = "";
       }
       else {
@@ -150,24 +161,55 @@ bool ConfigurationManager::start_config_mode() {
   wifi_act_characteristic->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
+      
+      #ifdef SHOW_DEBUG
+      Serial.printf("[Bluetooth] Act Value: <%s>\n", value);
+      #endif
 
-      if(value == "wifi-check") {
-        wifi_log_characteristic->setValue("checking");
-        
-        String ssid = "";
-        String pass = "";
+      if(value == "[") {
+        ConfigurationManager::data_chunked = "";
+      }
+      else if(value == "]") {
+        #ifdef SHOW_DEBUG
+        Serial.printf("[Bluetooth] Act Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
+        #endif
 
-        ConfigurationManager::get_wifi_creds(ssid, pass);
-        
-        WiFi.begin(ssid, pass);
+        if(ConfigurationManager::data_chunked == "wifi-check") {
+          ConfigurationManager::set_wifi_log("");
+          
+          String ssid = "";
+          String pass = "";
 
-        for(uint8_t index = 0; index < 4; index++) {
-          if(WiFi.isConnected()) {
-            wifi_log_characteristic->setValue("connected");
+          ConfigurationManager::get_wifi_creds(ssid, pass);
+
+          #ifdef SHOW_DEBUG
+          Serial.print("[WiFi] Checking...\n");
+          #endif
+          
+          WiFi.begin(ssid, pass);
+
+          ConfigurationManager::data_chunked = "";
+
+          for(uint8_t index = 0; index < 4; index++) {
+            if(WiFi.isConnected()) {
+              #ifdef SHOW_DEBUG
+              Serial.print("[WiFi] Connected!\n");
+              #endif
+              ConfigurationManager::set_wifi_log("connected");
+              break;
+            }
+
+            delay(1000);
           }
-
-          delay(1000);
+          if(!WiFi.isConnected()) {
+            #ifdef SHOW_DEBUG
+            Serial.print("[WiFi] WiFi is not connected :(\n");
+            #endif
+          }
         }
+      }
+      else {
+        ConfigurationManager::data_chunked += value;
       }
     }
   ));
@@ -270,7 +312,6 @@ void ConfigurationManager::set_string(const char* key, String &value) {
         // Save the part
         String key_partition = String(key) + "-" + String(current_partition);
         preferences.putString(key_partition.c_str(), current_value);
-        Serial.printf("Partition Part-%d Info: %s\n", current_partition, current_value);
         
         current_value = "";
         character_index = 0;
@@ -281,7 +322,6 @@ void ConfigurationManager::set_string(const char* key, String &value) {
     if(current_value != "") {
       String key_partition = String(key) + "-" + String(current_partition);
       preferences.putString(key_partition.c_str(), current_value);
-      Serial.printf("Partition Part-%d Info: %s\n", current_partition, current_value);
       current_partition += 1;
     }
 
@@ -296,7 +336,6 @@ String ConfigurationManager::get_string(const char* key) {
   // Check if there's partition for it
   String key_ps = "ps-" + String(key);
   uint16_t partition_size_info = preferences.getShort(key_ps.c_str(), 0);
-  Serial.printf("Partition Size Info: %d\n", partition_size_info);
 
   // If there's no partition
   if(partition_size_info == 0) {
@@ -315,5 +354,18 @@ String ConfigurationManager::get_string(const char* key) {
 }
 
 void ConfigurationManager::set_wifi_log(const char *data) {
-  wifi_log_characteristic->setValue(data);
+  if(wifi_log_characteristic != nullptr) {
+    wifi_log_characteristic->setValue(data);
+
+    if(data != "") {
+      last_wifi_log_changed = millis();
+    }
+  }
+}
+
+void ConfigurationManager::loop_config_mode() {
+  if(ConfigurationManager::last_wifi_log_changed != 0 && millis() - ConfigurationManager::last_wifi_log_changed > WIFI_LOG_TIMEOUT) {
+    ConfigurationManager::set_wifi_log("");
+    ConfigurationManager::last_wifi_log_changed = 0;
+  }
 }

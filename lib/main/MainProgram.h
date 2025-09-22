@@ -3,7 +3,7 @@
 #include <WebSocketManager.h>       // Custom web socket handler library
 #include <ConfigurationManager.h>   // Custom configuration through bluetooth library
 #include <WaterLeakageGuard.h>      // Custom water leakage monitoring library
-#include <HTTPUpdateServer.h>
+#include <HTTPUpdateServer.h>       // Basic 
 #include <WebServer.h>
 #include <ESPmDNS.h>
 
@@ -54,7 +54,7 @@ bool wifi_led_state = false;
 uint64_t last_wifi_led_changed = 0UL;
 
 // Mode handler
-uint8_t previous_mode = NORMAL_MODE;
+uint8_t previous_mode = 100;
 
 // Water Flow data
 uint8_t previous_water_flow_value = 0;
@@ -74,6 +74,7 @@ void stop_configuration_mode();
 
 // Looped Functions
 void loop_normal_mode();
+void loop_config_mode();
 
 // Water Leakage Handler functions
 void monitor_water_leakage();
@@ -124,23 +125,30 @@ void setup() {
 
 void loop() {  
   // If it's on configuration mode :)
-  if(CURRENT_MODE == CONFIGURATION_MODE && previous_mode == NORMAL_MODE) {
-    // Start configuration mode :D
-    start_configuration_mode();
-    previous_mode = CONFIGURATION_MODE;
+  if(CURRENT_MODE == CONFIGURATION_MODE) {
+    // If previously not in configuration mode :>
+    if(previous_mode != CONFIGURATION_MODE) {
+      // Start configuration mode :D
+      start_configuration_mode();
+      previous_mode = CONFIGURATION_MODE;
+    }
+    
+    // Loop configuration mode :>
+    loop_config_mode();
   }
 
   // If it's not it's on normal mode :]
   if(CURRENT_MODE == NORMAL_MODE) {
-    // If previously configuration mode :)
-    if(previous_mode == CONFIGURATION_MODE) {
+    // If previously not in normal mode :)
+    if(previous_mode != NORMAL_MODE) {
+      // Start normal mode :D
       start_normal_mode();
       stop_configuration_mode();
+      previous_mode = NORMAL_MODE;
     }
 
     // Loop normal mode :>
-    loop_normal_mode();
-    previous_mode = NORMAL_MODE;
+    loop_normal_mode();                   
   }
 
   // If WiFi is currently connected :]
@@ -193,9 +201,6 @@ void check_wifi_connection() {
 
       sync_server.begin();
       Serial.print("[OTA] Web servers started!\n");
-
-      // Update the BLE
-      ConfigurationManager::set_wifi_log("connected");
     }
 
     digitalWrite(WIFI_INDICATOR_PIN, 1);
@@ -337,6 +342,15 @@ void loop_normal_mode() {
 
   // Check WiFi connection
   check_wifi_connection();
+}
+
+
+/**
+ * @brief loop in config mode
+ * 
+ */
+void loop_config_mode() {
+  ConfigurationManager::loop_config_mode();
 }
 
 

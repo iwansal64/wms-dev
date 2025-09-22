@@ -9,6 +9,7 @@ public:
   static bool is_storage_open;
   static bool is_ble_active;
   static String data_chunked;
+  static uint64_t last_wifi_log_changed;
 
   /**
    * @brief Used to start configuration process including BLE server setup
@@ -58,6 +59,8 @@ public:
    */
   static void set_string(const char *key, String &value);
 
+  
+  
   /**
    * @brief Used to get String from persistence storage
    * @attention Use this after calling start_config_mode() function
@@ -72,4 +75,11 @@ public:
    * 
    */
   static void set_wifi_log(const char *data);
+
+
+  /**
+   * @brief Used to do something about the configuration in the loop
+   * 
+   */
+  static void loop_config_mode();
 };
