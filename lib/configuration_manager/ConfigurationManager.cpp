@@ -2,9 +2,7 @@
 #include <ConfigurationManager.h>
 #include <Preferences.h>
 #include <NimBLEDevice.h>
-
-// Environment Variables
-#include <env.h>
+#include <WiFi.h>
 
 
 // Helper Definitions
@@ -12,21 +10,19 @@
                                NIMBLE_PROPERTY::WRITE |\
                                NIMBLE_PROPERTY::NOTIFY
 
+// Environment Variables
+#include <env.h>
+
 
 // Used for accessing persistence storage
 Preferences preferences;
 
 
 // BLE Characteristics
-static NimBLECharacteristic *wifi_ssid_characteric;
-static NimBLECharacteristic *wifi_pass_characteric;
-static NimBLECharacteristic *wifi_log_characteric;
-
-// UUID for characteristics and services of BLE
-static BLEUUID wifi_ssid_uuid(ENV_WIFI_SSID_BLE_UUID);
-static BLEUUID wifi_pass_uuid(ENV_WIFI_PASS_BLE_UUID);
-static BLEUUID wifi_log_uuid(ENV_WIFI_LOG_BLE_UUID);
-static BLEUUID wifi_service_uuid(ENV_WIFI_SERVICE_BLE_UUID);
+static NimBLECharacteristic *wifi_ssid_characteristic;
+static NimBLECharacteristic *wifi_pass_characteristic;
+static NimBLECharacteristic *wifi_log_characteristic;
+static NimBLECharacteristic *wifi_act_characteristic;
 
 // Static server
 static NimBLEServer *ble_server;
@@ -95,25 +91,22 @@ bool ConfigurationManager::start_config_mode() {
   #endif
 
   NimBLEDevice::init(ENV_DEVICE_NAME);
-  NimBLEDevice::setMTU(100);
 
   // Create BLE Server
   ble_server = NimBLEDevice::createServer();
   ble_server->setCallbacks(&serverCallbacks);
 
   // Create BLE Service
-  NimBLEService *ble_wifi_service = ble_server->createService(wifi_service_uuid);
+  NimBLEService *ble_wifi_service = ble_server->createService(ENV_WIFI_SERVICE_BLE_UUID);
 
   // Create BLE Characteristics for containing SSID and password
-  wifi_ssid_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_SSID_BLE_UUID, DEFAULT_BLE_PROPERTIES);
-  wifi_pass_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_PASS_BLE_UUID, DEFAULT_BLE_PROPERTIES);
-  wifi_log_characteric = ble_wifi_service->createCharacteristic(ENV_WIFI_LOG_BLE_UUID, DEFAULT_BLE_PROPERTIES);
-
-  wifi_ssid_characteric->setValue((uint8_t *)"123456789012345678901234567890", 30); // Set the maximum BLE value to 30
-  wifi_pass_characteric->setValue((uint8_t *)"123456789012345678901234567890", 30); // Set the maximum BLE value to 30
+  wifi_ssid_characteristic = ble_wifi_service->createCharacteristic(ENV_WIFI_SSID_BLE_UUID, DEFAULT_BLE_PROPERTIES);
+  wifi_pass_characteristic = ble_wifi_service->createCharacteristic(ENV_WIFI_PASS_BLE_UUID, DEFAULT_BLE_PROPERTIES);
+  wifi_log_characteristic = ble_wifi_service->createCharacteristic(ENV_WIFI_LOG_BLE_UUID, DEFAULT_BLE_PROPERTIES);
+  wifi_act_characteristic = ble_wifi_service->createCharacteristic(ENV_WIFI_ACT_BLE_UUID, DEFAULT_BLE_PROPERTIES);
 
   // Setting BLE Listener
-  wifi_ssid_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
+  wifi_ssid_characteristic->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
       Serial.printf("[Bluetooth] SSID Value: <%s>\n", value);
@@ -124,7 +117,7 @@ bool ConfigurationManager::start_config_mode() {
       else if(value == "]") {
         Serial.printf("[Bluetooth] SSID Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
         ConfigurationManager::set_wifi_ssid(ConfigurationManager::data_chunked);
-        wifi_log_characteric->setValue("WiFi SSID saved");
+        wifi_log_characteristic->setValue("ssid-saved");
         ConfigurationManager::data_chunked = "";
       }
       else {
@@ -133,7 +126,7 @@ bool ConfigurationManager::start_config_mode() {
     }
   ));
   
-  wifi_pass_characteric->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
+  wifi_pass_characteristic->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
     [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
       String value = String(characteristics->getValue());
       
@@ -145,7 +138,7 @@ bool ConfigurationManager::start_config_mode() {
       else if(value == "]") {
         Serial.printf("[Bluetooth] Pass Final Value: <%s>\n", ConfigurationManager::data_chunked.c_str());
         ConfigurationManager::set_wifi_pass(ConfigurationManager::data_chunked);
-        wifi_log_characteric->setValue("WiFi password saved");
+        wifi_log_characteristic->setValue("pass-saved");
         ConfigurationManager::data_chunked = "";
       }
       else {
@@ -154,6 +147,32 @@ bool ConfigurationManager::start_config_mode() {
     }
   ));
 
+  wifi_act_characteristic->setCallbacks(new LambdaCharacteristicCallback<void (*)(NimBLECharacteristic*, NimBLEConnInfo&)>(
+    [](NimBLECharacteristic *characteristics, NimBLEConnInfo& connection_info) {
+      String value = String(characteristics->getValue());
+
+      if(value == "wifi-check") {
+        wifi_log_characteristic->setValue("checking");
+        
+        String ssid = "";
+        String pass = "";
+
+        ConfigurationManager::get_wifi_creds(ssid, pass);
+        
+        WiFi.begin(ssid, pass);
+
+        for(uint8_t index = 0; index < 4; index++) {
+          if(WiFi.isConnected()) {
+            wifi_log_characteristic->setValue("connected");
+          }
+
+          delay(1000);
+        }
+      }
+    }
+  ));
+
+  
   // Start the BLE server
   ble_wifi_service->start();
   NimBLEAdvertising* ble_advertising = NimBLEDevice::getAdvertising();
@@ -293,4 +312,8 @@ String ConfigurationManager::get_string(const char* key) {
     }
     return result;
   }
+}
+
+void ConfigurationManager::set_wifi_log(const char *data) {
+  wifi_log_characteristic->setValue(data);
 }

@@ -30,13 +30,13 @@
 #define INTERVAL_FOR_WIFI_INDICATOR 1000
 #define INTERVAL_OTA_PROGRESS_UPDATE 1000
 
-#define NORMAL_MODE 0
-#define CONFIGURATION_MODE 1
+#define NORMAL_MODE 1
+#define CONFIGURATION_MODE 0
 
 #define CURRENT_MODE digitalRead(CONFIG_SWITCH_PIN)
 
 //? ------> [VARIABLES] Data
-
+ 
 // Web Socket data communication
 uint64_t last_time_update_data = 0UL;
 WebSocketManager ws_manager;
@@ -105,22 +105,8 @@ void setup() {
 
   // Setup Water Flow Sensors
   water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_1_PIN);
+  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_2_PIN);
   
-
-  /**
-   * @brief Check current configuration pin voltage
-   * @brief If the voltage is high, go into a configuration mode
-   * @brief else, go into a normal mode
-   * 
-   */
-  if(CURRENT_MODE == CONFIGURATION_MODE) {
-    // Start Configuration Mode
-    start_configuration_mode();
-  }
-  else if(CURRENT_MODE == NORMAL_MODE) {
-    // Start Normal Mode
-    start_normal_mode();
-  }
 
   // Setup WiFi
   WiFi.setHostname(ENV_DEVICE_NAME);
@@ -148,7 +134,6 @@ void loop() {
 
     // Loop normal mode :>
     loop_normal_mode();
-
     previous_mode = NORMAL_MODE;
   }
 
@@ -202,6 +187,9 @@ void check_wifi_connection() {
 
       sync_server.begin();
       Serial.print("[OTA] Web servers started!\n");
+
+      // Update the BLE
+      ConfigurationManager::set_wifi_log("connected");
     }
 
     digitalWrite(WIFI_INDICATOR_PIN, 1);
