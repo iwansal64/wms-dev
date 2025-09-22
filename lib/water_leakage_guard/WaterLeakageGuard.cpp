@@ -2,12 +2,13 @@
 #include <Arduino.h>
 #include <env.h>
 
-void WaterLeakageGuard::add_sensor(uint8_t sensor_pin) {
-  this->flow_sensors.push_back(FlowSensor(sensor_pin, 7.5));
+void WaterLeakageGuard::add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin) {
+  this->flow_sensors.push_back(FlowSensor(sensor_pin, buzzer_pin, 7.5));
   #ifdef SHOW_INFO
   Serial.println("[WaterLeakageGuard] Successfully added new flow sensor");
   #endif
 }
+
 
 int8_t WaterLeakageGuard::get_water_leak_value() {
   if(this->flow_sensors.size() < 2) {
@@ -65,4 +66,16 @@ float WaterLeakageGuard::get_average_flow_value() {
   }
 
   return average_flow_sensor / this->flow_sensors.size();
+}
+
+void WaterLeakageGuard::set_warning(uint8_t sensor_index, uint8_t value) {
+  if(sensor_index > this->flow_sensors.size()) return;
+
+  this->flow_sensors[sensor_index].buzz(value);
+}
+
+void WaterLeakageGuard::clear_warning() {
+  for(FlowSensor flow_sensor : this->flow_sensors) {
+    flow_sensor.buzz(0);
+  }
 }

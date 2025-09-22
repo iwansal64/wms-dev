@@ -6,14 +6,18 @@
 class FlowSensor
 {
 public:
-  uint8_t pin;
+  uint8_t sensor_pin;
+  uint8_t buzzer_pin;
   uint8_t error;
   
   void IRAM_ATTR handlePulse();
-  FlowSensor(uint8_t pin, float calibration_factor);
+  FlowSensor(uint8_t sensor_pin, uint8_t buzzer_pin, float calibration_factor);
+
   float get_flow_rate() const;
   float get_total_litres() const;
+
   void update();
+  void buzz(uint8_t value);
   
 private:
   float calibration_factor;

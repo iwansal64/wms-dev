@@ -45,7 +45,7 @@ public:
    * }
    * @endcode
    */
-  void add_sensor(uint8_t sensor_pin);
+  void add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin);
   
   /**
    * @brief Used to update the data
@@ -121,5 +121,21 @@ public:
    * 
    */
   float get_average_flow_value();
+
+
+  /**
+   * @brief Give warning to the sensor
+   * @param sensor_index the sensor that you want to warn
+   * 
+   */
+  void set_warning(uint8_t sensor_index, uint8_t value);
+  
+
+  /**
+   * @brief Clear warning to all sensors
+   * 
+   */
+  void clear_warning();
+  
 };
 

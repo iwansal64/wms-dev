@@ -15,8 +15,13 @@
 //? ------> [GPIO] GPIO Pins
 
 #define CONFIG_SWITCH_PIN 22
+
 #define WATER_FLOW_SENSOR_1_PIN 4
 #define WATER_FLOW_SENSOR_2_PIN 2
+
+#define BUZZER_SENSOR_1_PIN 5
+#define BUZZER_SENSOR_2_PIN 17
+
 #define CONFIG_INDICATOR_PIN 21
 #define WIFI_INDICATOR_PIN 18
 #define ERROR_INDICATOR_PIN 19
@@ -30,8 +35,8 @@
 #define INTERVAL_FOR_WIFI_INDICATOR 1000
 #define INTERVAL_OTA_PROGRESS_UPDATE 1000
 
-#define NORMAL_MODE 1
-#define CONFIGURATION_MODE 0
+#define NORMAL_MODE 0
+#define CONFIGURATION_MODE 1
 
 #define CURRENT_MODE digitalRead(CONFIG_SWITCH_PIN)
 
@@ -101,22 +106,23 @@ void setup() {
   pinMode(CONFIG_INDICATOR_PIN, OUTPUT);
   pinMode(WIFI_INDICATOR_PIN, OUTPUT);
   pinMode(WIFI_INDICATOR_PIN, OUTPUT);
-  
 
   // Setup Water Flow Sensors
-  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_1_PIN);
-  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_2_PIN);
+  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_1_PIN, BUZZER_SENSOR_1_PIN);
+  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_2_PIN, BUZZER_SENSOR_2_PIN);
   
 
   // Setup WiFi
   WiFi.setHostname(ENV_DEVICE_NAME);
+
+  Serial.printf("CURRENT_MODE: %d\n", CURRENT_MODE);
 }
 
 //? ------> [LOOP] Executed Continously Program
 
 
 
-void loop() {
+void loop() {  
   // If it's on configuration mode :)
   if(CURRENT_MODE == CONFIGURATION_MODE && previous_mode == NORMAL_MODE) {
     // Start configuration mode :D
@@ -366,6 +372,7 @@ void monitor_water_leakage() {
     // Send the data
     bool result = ws_manager.launch();
 
+    // Set the previous average water flow value to reduce data sending
     previous_water_flow_value = current_water_flow_value;
   }
 
@@ -378,7 +385,11 @@ void monitor_water_leakage() {
   
     // Send the data
     bool result = ws_manager.launch();
-
+    
+    // Send warning to the current leakage sensor (turn on buzzer)
+    water_leakage_guard.set_warning(current_water_leak_value-1, 1);
+    
+    // Set the previous water leak value to reduce data sending
     previous_water_leak_value = current_water_leak_value;
   }
 }
