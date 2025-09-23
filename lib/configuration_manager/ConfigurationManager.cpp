@@ -185,10 +185,12 @@ bool ConfigurationManager::start_config_mode() {
           #ifdef SHOW_DEBUG
           Serial.print("[WiFi] Checking...\n");
           #endif
-          
-          WiFi.begin(ssid, pass);
 
           ConfigurationManager::data_chunked = "";
+          
+          if(!WiFi.isConnected()) {
+            WiFi.begin(ssid, pass);
+          }
 
           for(uint8_t index = 0; index < 4; index++) {
             if(WiFi.isConnected()) {
