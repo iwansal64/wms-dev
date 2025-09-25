@@ -10,6 +10,14 @@ void WaterLeakageGuard::add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin) {
 }
 
 
+void WaterLeakageGuard::add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin, float calibration_factor) {
+  this->flow_sensors.push_back(FlowSensor(sensor_pin, buzzer_pin, calibration_factor));
+  #ifdef SHOW_INFO
+  Serial.println("[WaterLeakageGuard] Successfully added new flow sensor");
+  #endif
+}
+
+
 int8_t WaterLeakageGuard::get_water_leak_value() {
   if(this->flow_sensors.size() < 2) {
 

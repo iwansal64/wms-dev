@@ -40,6 +40,9 @@
 
 #define CURRENT_MODE digitalRead(CONFIG_SWITCH_PIN)
 
+#define WATER_FLOW_CALIBRATION_FACTOR_1 75
+#define WATER_FLOW_CALIBRATION_FACTOR_2 75
+
 //? ------> [VARIABLES] Data
  
 // Web Socket data communication
@@ -390,6 +393,19 @@ void monitor_water_leakage() {
     previous_water_flow_value = current_water_flow_value;
   }
 
+  for(uint8_t index = 0; index < water_leakage_guard.flow_sensors.size(); index++) {
+    float current_water_flow_value = water_leakage_guard.get_flow_value(index);
+
+    // Prepare the data for flow value
+    ws_manager.put(String("flow-"));
+    ws_manager.put(index);
+    ws_manager.put(String("="));
+    ws_manager.put(current_water_flow_value);
+    
+    // Send the data
+    bool result = ws_manager.launch();
+  }
+
   // If the data changed, update to the websocket
   if(current_water_leak_value != previous_water_leak_value && current_water_leak_value != -1) {
   
@@ -400,7 +416,7 @@ void monitor_water_leakage() {
     // Send the data
     bool result = ws_manager.launch();
     
-    // Send warning to the current leakage sensor (turn on buzzer)
+    // Send warning to the current leakage senso11r (turn on buzzer)
     water_leakage_guard.set_warning(current_water_leak_value-1, 1);
     
     // Set the previous water leak value to reduce data sending

@@ -12,8 +12,6 @@
 class WaterLeakageGuard
 {
 private:
-  std::vector<FlowSensor> flow_sensors;
-
   /**
    * @brief Compare two Flow Sensors to know if there's leakage
    * @param sensor_1 is a sensor data used for anchor
@@ -32,6 +30,7 @@ private:
   bool is_leaked(FlowSensor sensor_1, FlowSensor sensor_2);
   
 public:
+  std::vector<FlowSensor> flow_sensors;
   
   /**
    * @brief Add sensor pin to monitor
@@ -46,6 +45,7 @@ public:
    * @endcode
    */
   void add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin);
+  void add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin, float calibration_factor);
   
   /**
    * @brief Used to update the data
