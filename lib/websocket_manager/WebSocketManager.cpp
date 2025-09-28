@@ -109,6 +109,10 @@ void WebSocketManager::handle_data(WStype_t type, uint8_t * payload, size_t leng
   }
 }
 
+void WebSocketManager::flush() {
+  this->payload = "";
+}
+
 template bool WebSocketManager::put<int>(const int& data);
 template bool WebSocketManager::put<uint8_t>(const uint8_t& data);
 template bool WebSocketManager::put<int8_t>(const int8_t& data);

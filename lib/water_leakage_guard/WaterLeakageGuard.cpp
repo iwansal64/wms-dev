@@ -2,6 +2,9 @@
 #include <Arduino.h>
 #include <env.h>
 
+#define TIME_BEFORE_LEAKAGE_DEDUCTION_FINALIZED 1000  // It needs to wait 1 second to deduct if the water leaked or not 
+#define WATER_LEAKAGE_TRIGGER_THRESHOLD 2             // It needs to be 2 liter / minutes different for leakage detection
+
 void WaterLeakageGuard::add_sensor(uint8_t sensor_pin, uint8_t buzzer_pin) {
   this->flow_sensors.push_back(FlowSensor(sensor_pin, buzzer_pin, 7.5));
   #ifdef SHOW_INFO
@@ -36,20 +39,44 @@ int8_t WaterLeakageGuard::get_water_leak_value() {
       break;
     }
   }
+
+  uint8_t water_leak_value = (current_sensor_index == this->flow_sensors.size() - 1) ? 0 : current_sensor_index + 1;
   
-  return (current_sensor_index == this->flow_sensors.size() - 1) ? 0 : current_sensor_index + 1;
+  if(this->previous_water_leak_value != water_leak_value) {
+    uint64_t current_time = millis();
+
+    if(this->deducted_water_leak_value != water_leak_value) {
+      this->deducted_water_leak_value = water_leak_value;
+      this->last_deducted_leak_change_time = current_time;
+    }
+
+    if(current_time - this->last_deducted_leak_change_time > TIME_BEFORE_LEAKAGE_DEDUCTION_FINALIZED) {
+      this->previous_water_leak_value = water_leak_value;
+      return water_leak_value;
+    }
+  }
+
+  return this->previous_water_leak_value;
 }
 
 bool WaterLeakageGuard::is_leaked(FlowSensor sensor_1, FlowSensor sensor_2) {
   float first_flow_rate = sensor_1.get_flow_rate();
   float second_flow_rate = sensor_2.get_flow_rate();
-  // If there's difference in 10 litres
-  if(second_flow_rate - 10 > first_flow_rate || first_flow_rate > second_flow_rate + 10) {
+  float max_flow_rate = max(first_flow_rate, second_flow_rate);
+  float min_flow_rate = min(first_flow_rate, second_flow_rate);
+
+  // If the one flowrate is less than the half of another
+  // if(min_flow_rate < max_flow_rate / 2) {
+  //   return true;
+  // }
+
+  // If there's flow in one sensor and no flow in another
+  if(abs(first_flow_rate - second_flow_rate) > WATER_LEAKAGE_TRIGGER_THRESHOLD) {
     return true;
   }
 
   return false;
-}
+}  
 
 float WaterLeakageGuard::get_flow_value(uint8_t sensor_index) {
   if(sensor_index > this->flow_sensors.size()) return -1;

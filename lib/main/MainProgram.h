@@ -109,11 +109,13 @@ void setup() {
   pinMode(CONFIG_SWITCH_PIN, INPUT_PULLDOWN);
   pinMode(CONFIG_INDICATOR_PIN, OUTPUT);
   pinMode(WIFI_INDICATOR_PIN, OUTPUT);
-  pinMode(WIFI_INDICATOR_PIN, OUTPUT);
+  pinMode(ERROR_INDICATOR_PIN, OUTPUT);
 
+  digitalWrite(ERROR_INDICATOR_PIN, 0);
+  
   // Setup Water Flow Sensors
-  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_1_PIN, BUZZER_SENSOR_1_PIN);
-  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_2_PIN, BUZZER_SENSOR_2_PIN);
+  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_1_PIN, BUZZER_SENSOR_1_PIN, 75);
+  water_leakage_guard.add_sensor(WATER_FLOW_SENSOR_2_PIN, BUZZER_SENSOR_2_PIN, 75);
   
 
   // Setup WiFi
@@ -375,12 +377,31 @@ void monitor_water_leakage() {
   int8_t current_water_leak_value = water_leakage_guard.get_water_leak_value();
   // int8_t current_water_leak_value = random(0, 4);
   Serial.printf("Water Leak: %d\n", current_water_leak_value);
+
+  // Clear all of the warnings
+  water_leakage_guard.clear_warning();
+  
+  // If there's water leakage
+  if(current_water_leak_value > 0) {
+    // Send warning to the current leakage senso11r (turn on buzzer)
+    water_leakage_guard.set_warning(current_water_leak_value-1, 1);
+
+    // Turn on RED LED
+    digitalWrite(ERROR_INDICATOR_PIN, 1);
+  }
+  
+  // If there's no water leakage
+  else {
+    digitalWrite(ERROR_INDICATOR_PIN, 0);
+  }
   
 
   if(!wifi_connected) return;
   //? UPDATE TO WEB SOCKET
   // If the data changed, update to the websocket
   if(current_water_flow_value != previous_water_flow_value) {
+    // Flushing all of the previous preperation data
+    ws_manager.flush();
 
     // Prepare the data for flow value
     ws_manager.put(String("aflow="));
@@ -395,6 +416,9 @@ void monitor_water_leakage() {
 
   for(uint8_t index = 0; index < water_leakage_guard.flow_sensors.size(); index++) {
     float current_water_flow_value = water_leakage_guard.get_flow_value(index);
+    
+    // Flushing all of the previous preperation data
+    ws_manager.flush();
 
     // Prepare the data for flow value
     ws_manager.put(String("flow-"));
@@ -408,6 +432,8 @@ void monitor_water_leakage() {
 
   // If the data changed, update to the websocket
   if(current_water_leak_value != previous_water_leak_value && current_water_leak_value != -1) {
+    // Flushing all of the previous preperation data
+    ws_manager.flush();
   
     // Prepare the data for flow value
     ws_manager.put(String("leak="));
@@ -415,9 +441,6 @@ void monitor_water_leakage() {
   
     // Send the data
     bool result = ws_manager.launch();
-    
-    // Send warning to the current leakage senso11r (turn on buzzer)
-    water_leakage_guard.set_warning(current_water_leak_value-1, 1);
     
     // Set the previous water leak value to reduce data sending
     previous_water_leak_value = current_water_leak_value;

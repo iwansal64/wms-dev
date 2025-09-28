@@ -12,6 +12,10 @@
 class WaterLeakageGuard
 {
 private:
+  uint64_t last_deducted_leak_change_time;
+  uint8_t previous_water_leak_value;
+  uint8_t deducted_water_leak_value;
+
   /**
    * @brief Compare two Flow Sensors to know if there's leakage
    * @param sensor_1 is a sensor data used for anchor

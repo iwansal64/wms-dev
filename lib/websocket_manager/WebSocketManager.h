@@ -54,6 +54,18 @@ void listen(void (*callback)(WStype_t type, uint8_t * payload, size_t length));
 
 
 /**
+ * @brief Used to flush all of the data in preparation
+ * 
+ * @code
+ * ws_manager.put("Old Data");
+ * ws_manager.flush();
+ * ws_manager.put("New Data");
+ * ws_manager.launch(); // Launching the new data instead
+ */
+void flush();
+
+
+/**
  * @brief Used to prepare data through web socket connection 
  * 
  * @param data all sorts of things that can be convereted into a string
